@@ -368,9 +368,6 @@ class OracleTracker(Tracker):
 		if boxes.nelement() > 0:
 			boxes = clip_boxes_to_image(boxes, blob['img'].shape[-2:])
 
-			# Filter out tracks that have too low person score
-			inds = torch.gt(scores, self.detection_person_thresh).nonzero().view(-1)
-
 			if self.kill_oracle:
 				gt = blob['gt']
 				gt_boxes = torch.cat(list(gt.values()), 0).cuda()

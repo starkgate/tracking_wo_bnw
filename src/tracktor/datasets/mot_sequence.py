@@ -5,10 +5,7 @@ import os.path as osp
 
 import numpy as np
 import torch
-from PIL import Image
 from torch.utils.data import Dataset
-
-import cv2
 
 from ..config import cfg
 from torchvision.transforms import ToTensor
@@ -41,8 +38,6 @@ class MOT17Sequence(Dataset):
         self._train_folders = os.listdir(os.path.join(self._mot_dir, 'train'))
         self._test_folders = os.listdir(os.path.join(self._mot_dir, 'test'))
 
-        self.transforms = ToTensor()
-
         if seq_name is not None:
             assert seq_name in self._train_folders or seq_name in self._test_folders, \
                 'Image set does not exist: {}'.format(seq_name)
@@ -58,12 +53,9 @@ class MOT17Sequence(Dataset):
     def __getitem__(self, idx):
         """Return the ith image converted to blob"""
         data = self.data[idx]
-        img = Image.open(data['im_path']).convert("RGB")
-        img = self.transforms(img)
 
         sample = {}
-        sample['img'] = img
-        sample['dets'] = torch.tensor([det[:4] for det in data['dets']])
+        sample['img'] = data
         sample['img_path'] = data['im_path']
         sample['gt'] = data['gt']
         sample['vis'] = data['vis']
@@ -74,13 +66,13 @@ class MOT17Sequence(Dataset):
         seq_name = self._seq_name
         if seq_name in self._train_folders:
             seq_path = osp.join(self._mot_dir, 'train', seq_name)
-            label_path = osp.join(self._label_dir, 'train', 'MOT16-'+seq_name[-2:])
+            label_path = osp.join(self._label_dir, 'train', 'MOT16-' + seq_name[-2:])
             mot17_label_path = osp.join(self._mot17_label_dir, 'train')
         else:
             seq_path = osp.join(self._mot_dir, 'test', seq_name)
-            label_path = osp.join(self._label_dir, 'test', 'MOT16-'+seq_name[-2:])
+            label_path = osp.join(self._label_dir, 'test', 'MOT16-' + seq_name[-2:])
             mot17_label_path = osp.join(self._mot17_label_dir, 'test')
-        raw_label_path = osp.join(self._raw_label_dir, 'MOT16-'+seq_name[-2:])
+        raw_label_path = osp.join(self._raw_label_dir, 'MOT16-' + seq_name[-2:])
 
         config_file = osp.join(seq_path, 'seqinfo.ini')
 
@@ -91,9 +83,11 @@ class MOT17Sequence(Dataset):
         config.read(config_file)
         seqLength = int(config['Sequence']['seqLength'])
         imDir = config['Sequence']['imDir']
+        imExt = config['Sequence']['imExt']
+        labels = config['Sequence']['labels']
 
         imDir = osp.join(seq_path, imDir)
-        gt_file = osp.join(seq_path, 'gt', 'gt.txt')
+        gt_file = labels
 
         total = []
         train = []
@@ -101,54 +95,40 @@ class MOT17Sequence(Dataset):
 
         visibility = {}
         boxes = {}
-        dets = {}
 
-        for i in range(1, seqLength+1):
+        # frames start at 0
+        for i in range(1, seqLength + 1):
             boxes[i] = {}
             visibility[i] = {}
-            dets[i] = []
 
         no_gt = False
         if osp.exists(gt_file):
             with open(gt_file, "r") as inf:
-                reader = csv.reader(inf, delimiter=',')
+                reader = csv.reader(inf, delimiter=' ')
                 for row in reader:
-                    # class person, certainity 1, visibility >= 0.25
-                    if int(row[6]) == 1 and int(row[7]) == 1 and float(row[8]) >= self._vis_threshold:
-                        # Make pixel indexes 0-based, should already be 0-based (or not)
-                        x1 = int(row[2]) - 1
-                        y1 = int(row[3]) - 1
-                        # This -1 accounts for the width (width of 1 x1=x2)
-                        x2 = x1 + int(row[4]) - 1
-                        y2 = y1 + int(row[5]) - 1
-                        bb = np.array([x1,y1,x2,y2], dtype=np.float32)
-                        boxes[int(row[0])][int(row[1])] = bb
-                        visibility[int(row[0])][int(row[1])] = float(row[8])
+                    frame = int(row[0])
+                    bbox = int(row[1])
+                    # Make pixel indexes 0-based, should already be 0-based (or not)
+                    x1 = int(float(row[2])) - 1
+                    y1 = int(float(row[3])) - 1
+                    # This -1 accounts for the width (width of 1 x1=x2)
+                    x2 = x1 + int(float(row[4])) - 1
+                    y2 = y1 + int(float(row[5])) - 1
+                    bb = np.array([x1, y1, x2, y2], dtype=np.float32)
+                    boxes[frame][bbox] = bb
+                    visibility[frame][bbox] = float(row[8])
         else:
             no_gt = True
 
-        det_file = self.get_det_file(label_path, raw_label_path, mot17_label_path)
+        for i in range(1, seqLength + 1):
+            im_path = osp.join(imDir, "{:06d}{:s}".format(i, imExt))
 
-        if osp.exists(det_file):
-            with open(det_file, "r") as inf:
-                reader = csv.reader(inf, delimiter=',')
-                for row in reader:
-                    x1 = float(row[2]) - 1
-                    y1 = float(row[3]) - 1
-                    # This -1 accounts for the width (width of 1 x1=x2)
-                    x2 = x1 + float(row[4]) - 1
-                    y2 = y1 + float(row[5]) - 1
-                    score = float(row[6])
-                    bb = np.array([x1,y1,x2,y2, score], dtype=np.float32)
-                    dets[int(float(row[0]))].append(bb)
-
-        for i in range(1,seqLength+1):
-            im_path = osp.join(imDir,"{:06d}.jpg".format(i))
-
-            sample = {'gt':boxes[i],
-                      'im_path':im_path,
-                      'vis':visibility[i],
-                      'dets':dets[i],}
+            # we need 'filename', 'ori_filename'
+            sample = {'gt': boxes[i],
+                      'filename': im_path,
+                      'ori_filename': im_path,
+                      'im_path': im_path,
+                      'vis': visibility[i]}
 
             total.append(sample)
 
@@ -197,7 +177,7 @@ class MOT17Sequence(Dataset):
         ./MOT16-14.txt
         """
 
-        #format_str = "{}, -1, {}, {}, {}, {}, {}, -1, -1, -1"
+        # format_str = "{}, -1, {}, {}, {}, {}, {}, -1, -1, -1"
 
         assert self._seq_name is not None, "[!] No seq_name, probably using combined database"
 
@@ -205,9 +185,9 @@ class MOT17Sequence(Dataset):
             os.makedirs(output_dir)
 
         if "17" in self._dets:
-            file = osp.join(output_dir, 'MOT17-'+self._seq_name[6:8]+"-"+self._dets[:-2]+'.txt')
+            file = osp.join(output_dir, 'MOT17-' + self._seq_name[6:8] + "-" + self._dets[:-2] + '.txt')
         else:
-            file = osp.join(output_dir, 'MOT16-'+self._seq_name[6:8]+'.txt')
+            file = osp.join(output_dir, 'MOT16-' + self._seq_name[6:8] + '.txt')
 
         with open(file, "w") as of:
             writer = csv.writer(of, delimiter=',')
@@ -217,7 +197,7 @@ class MOT17Sequence(Dataset):
                     y1 = bb[1]
                     x2 = bb[2]
                     y2 = bb[3]
-                    writer.writerow([frame+1, i+1, x1+1, y1+1, x2-x1+1, y2-y1+1, -1, -1, -1, -1])
+                    writer.writerow([frame + 1, i + 1, x1 + 1, y1 + 1, x2 - x1 + 1, y2 - y1 + 1, -1, -1, -1, -1])
 
 
 class MOT19Sequence(MOT17Sequence):

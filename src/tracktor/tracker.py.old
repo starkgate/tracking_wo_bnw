@@ -3,12 +3,12 @@ from collections import deque
 import numpy as np
 import torch
 import torch.nn.functional as F
-from mmcv.parallel import collate
+from torch.autograd import Variable
 from scipy.optimize import linear_sum_assignment
 import cv2
 
 from .utils import bbox_overlaps, warp_pos, get_center, get_height, get_width, make_pos
-
+from mmdet.apis import inference_detector, init_detector
 from torchvision.ops.boxes import clip_boxes_to_image, nms
 
 
@@ -17,7 +17,7 @@ class Tracker:
 	# only track pedestrian
 	cl = 1
 
-	def __init__(self, obj_detect, reid_network, tracker_cfg, device):
+	def __init__(self, obj_detect, reid_network, tracker_cfg):
 		self.obj_detect = obj_detect
 		self.reid_network = reid_network
 		self.detection_person_thresh = tracker_cfg['detection_person_thresh']
@@ -42,7 +42,6 @@ class Tracker:
 		self.track_num = 0
 		self.im_index = 0
 		self.results = {}
-		self.device = device
 
 	def reset(self, hard=True):
 		self.tracks = []
@@ -74,12 +73,50 @@ class Tracker:
 			))
 		self.track_num += num_new
 
-	def regress_tracks(self):
-		"""Regress the position of the tracks and also checks their scores."""
+	"""
+	def predict_boxes(self, boxes):
+        device = list(self.parameters())[0].device
+        boxes = boxes.to(device)
+
+        boxes = resize_boxes(boxes, self.original_image_sizes[0], self.preprocessed_images.image_sizes[0])
+        proposals = [boxes]
+
+        box_features = self.roi_heads.box_roi_pool(self.features, proposals, self.preprocessed_images.image_sizes)
+        box_features = self.roi_heads.box_head(box_features)
+        class_logits, box_regression = self.roi_heads.box_predictor(box_features)
+
+        pred_boxes = self.roi_heads.box_coder.decode(box_regression, proposals)
+        pred_scores = F.softmax(class_logits, -1)
+
+        # score_thresh = self.roi_heads.score_thresh
+        # nms_thresh = self.roi_heads.nms_thresh
+
+        # self.roi_heads.score_thresh = self.roi_heads.nms_thresh = 1.0
+        # self.roi_heads.score_thresh = 0.0
+        # self.roi_heads.nms_thresh = 1.0
+        # detections, detector_losses = self.roi_heads(
+        #     features, [boxes.squeeze(dim=0)], images.image_sizes, targets)
+
+        # self.roi_heads.score_thresh = score_thresh
+        # self.roi_heads.nms_thresh = nms_thresh
+
+        # detections = self.transform.postprocess(
+        #     detections, images.image_sizes, original_image_sizes)
+
+        # detections = detections[0]
+        # return detections['boxes'].detach().cpu(), detections['scores'].detach().cpu()
+
+        pred_boxes = pred_boxes[:, 1:].squeeze(dim=1).detach()
+        pred_boxes = resize_boxes(pred_boxes, self.preprocessed_images.image_sizes[0], self.original_image_sizes[0])
+        pred_scores = pred_scores[:, 1:].squeeze(dim=1).detach()
+        return pred_boxes, pred_scores
+	
+	def regress_tracks(self, blob):
 		pos = self.get_pos()
 
 		# regress
 		boxes, scores = self.obj_detect.predict_boxes(pos)
+		pos = clip_boxes_to_image(boxes, blob['img'].shape[-2:])
 
 		s = []
 		for i in range(len(self.tracks) - 1, -1, -1):
@@ -92,16 +129,56 @@ class Tracker:
 				# t.prev_pos = t.pos
 				t.pos = pos[i].view(1, -1)
 
-		return torch.Tensor(s[::-1]).to(self.device)
+		return torch.Tensor(s[::-1]).cuda()
+	"""
+
+	def regress_tracks(self, blob):
+		# get the predicted position of the person in the next frame
+		pos = self.get_pos().cpu().numpy()
+		blob = blob.permute(2, 1, 0).numpy()
+
+		scores = []
+		for p in pos: # for each tracked position in the list of tracks
+			def clamp(num):
+				if num < 0:
+					return 0
+				else:
+					return int(num)
+
+			x1, y1, x2, y2 = clamp(p[0]), clamp(p[1]), int(p[2]), int(p[3])
+			# get x1:x2, y1:y2 crop of the image and swap axes for x, y, channels order
+			# ori: 3, 480, 640
+			# dst: 640, 480, 3
+			result = inference_detector(self.obj_detect, blob[x1:x2, y1:y2, :])
+
+			if not result[0].size == 0 and result[0][0][4] > 0.1:
+				# x1, y1, x2, y2, score = res
+				scores.append(result[0][0][4])
+			else:
+				scores.append(0)
+
+		s = []
+		for i in range(len(self.tracks) - 1, -1, -1):
+			t = self.tracks[i]
+			t.score = scores[i]
+			if scores[i] == 0:
+				self.tracks_to_inactive([t])
+			else:
+				s.append(scores[i])
+				# t.prev_pos = t.pos
+				t.pos = torch.from_numpy(pos[i]).view(1, -1).cuda()
+
+		return torch.Tensor(s[::-1]).cuda()
 
 	def get_pos(self):
 		"""Get the positions of all active tracks."""
 		if len(self.tracks) == 1:
 			pos = self.tracks[0].pos
 		elif len(self.tracks) > 1:
-			pos = torch.cat([t.pos for t in self.tracks], 0)
+			# concatenate the position tensor of each track
+			pos = torch.cat([t.pos for t in self.tracks], 0).cuda()
 		else:
-			pos = torch.zeros(0).to(self.device)
+			pos = torch.zeros(0).cuda()
 		return pos
 
 	def get_features(self):
@@ -109,9 +186,9 @@ class Tracker:
 		if len(self.tracks) == 1:
 			features = self.tracks[0].features
 		elif len(self.tracks) > 1:
-			features = torch.cat([t.features for t in self.tracks], 0)
+			features = torch.cat([t.features for t in self.tracks], 0).cuda()
 		else:
-			features = torch.zeros(0).to(self.device)
+			features = torch.zeros(0).cuda()
 		return features
 
 	def get_inactive_features(self):
@@ -119,35 +196,35 @@ class Tracker:
 		if len(self.inactive_tracks) == 1:
 			features = self.inactive_tracks[0].features
 		elif len(self.inactive_tracks) > 1:
-			features = torch.cat([t.features for t in self.inactive_tracks], 0)
+			features = torch.cat([t.features for t in self.inactive_tracks], 0).cuda()
 		else:
-			features = torch.zeros(0).to(self.device)
+			features = torch.zeros(0).cuda()
 		return features
 
 	def reid(self, blob, new_det_pos, new_det_scores):
 		"""Tries to ReID inactive tracks with provided detections."""
-		new_det_features = [torch.zeros(0).to(self.device) for _ in range(len(new_det_pos))]
+		new_det_features = [torch.zeros(0).cuda() for _ in range(len(new_det_pos))]
 
 		if self.do_reid:
-			new_det_features = self.reid_network.test_rois(blob, new_det_pos).data
+			new_det_features = self.reid_network.test_rois(
+				blob['img'], new_det_pos).data
 
 			if len(self.inactive_tracks) >= 1:
 				# calculate appearance distances
 				dist_mat, pos = [], []
 				for t in self.inactive_tracks:
-					dist_mat.append(torch.cat([t.test_features(feat.view(1, -1))
-					                           for feat in new_det_features], dim=1))
+					dist_mat.append(torch.cat([t.test_features(feat.view(1, -1)) for feat in new_det_features], dim=1))
 					pos.append(t.pos)
 				if len(dist_mat) > 1:
-					dist_mat = torch.cat(dist_mat, 0)
-					pos = torch.cat(pos, 0)
+					dist_mat = torch.cat(dist_mat, 0).cuda()
+					pos = torch.cat(pos, 0).cuda()
 				else:
 					dist_mat = dist_mat[0]
 					pos = pos[0]
 
 				# calculate IoU distances
 				iou = bbox_overlaps(pos, new_det_pos)
-				iou_mask = torch.ge(iou, self.reid_iou_threshold)
+				iou_mask = torch.ge(iou, self.reid_iou_threshold).cuda()
 				iou_neg_mask = ~iou_mask
 				# make all impossible assignments to the same add big value
 				dist_mat = dist_mat * iou_mask.float() + iou_neg_mask.float() * 1000
@@ -171,21 +248,21 @@ class Tracker:
 				for t in remove_inactive:
 					self.inactive_tracks.remove(t)
 
-				keep = torch.Tensor([i for i in range(new_det_pos.size(0)) if i not in assigned]).long().to(self.device)
+				keep = torch.Tensor([i for i in range(new_det_pos.size(0)) if i not in assigned]).long().cuda()
 				if keep.nelement() > 0:
 					new_det_pos = new_det_pos[keep]
 					new_det_scores = new_det_scores[keep]
 					new_det_features = new_det_features[keep]
 				else:
-					new_det_pos = torch.zeros(0).to(self.device)
-					new_det_scores = torch.zeros(0).to(self.device)
-					new_det_features = torch.zeros(0).to(self.device)
+					new_det_pos = torch.zeros(0).cuda()
+					new_det_scores = torch.zeros(0).cuda()
+					new_det_features = torch.zeros(0).cuda()
 
 		return new_det_pos, new_det_scores, new_det_features
 
 	def get_appearances(self, blob):
 		"""Uses the siamese CNN to get the features for all active tracks."""
-		new_features = self.reid_network.test_rois(blob, self.get_pos()).data
+		new_features = self.reid_network.test_rois(blob['img'], self.get_pos()).data
 		return new_features
 
 	def add_features(self, new_features):
@@ -196,19 +273,20 @@ class Tracker:
 	def align(self, blob):
 		"""Aligns the positions of active and inactive tracks depending on camera motion."""
 		if self.im_index > 0:
-			im1 = np.transpose(self.last_image.cpu().numpy().squeeze(), (1, 2, 0))
-			im2 = np.transpose(blob['img']['img'][0].cpu().numpy().squeeze(), (1, 2, 0))
+			im1 = np.transpose(self.last_image.cpu().numpy(), (1, 2, 0))
+			im2 = np.transpose(blob['img'][0].cpu().numpy(), (1, 2, 0))
 			im1_gray = cv2.cvtColor(im1, cv2.COLOR_RGB2GRAY)
 			im2_gray = cv2.cvtColor(im2, cv2.COLOR_RGB2GRAY)
 			warp_matrix = np.eye(2, 3, dtype=np.float32)
-			criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, self.number_of_iterations,  self.termination_eps)
-			# workaround for cv2 crash, empty inputMask and 1px gaussian blur
+			criteria = (
+				cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, self.number_of_iterations, self.termination_eps)
+			# TODO, why 1?
 			cc, warp_matrix = cv2.findTransformECC(im1_gray, im2_gray, warp_matrix, self.warp_mode, criteria, None, 1)
 			warp_matrix = torch.from_numpy(warp_matrix)
 
 			for t in self.tracks:
 				t.pos = warp_pos(t.pos, warp_matrix)
-				# t.pos = clip_boxes(Variable(pos), blob['im_info'][0][:2]).data
+			# t.pos = clip_boxes(Variable(pos), blob['im_info'][0][:2]).data
 
 			if self.do_reid:
 				for t in self.inactive_tracks:
@@ -257,36 +335,27 @@ class Tracker:
 		###########################
 		# Look for new detections #
 		###########################
-		# run test pipeline on loaded images
-		blob['img']['filename'] = blob['img_path'][0]
-		blob['img']['ori_filename'] = blob['img_path'][0]
+		result = inference_detector(self.obj_detect, blob['img_path'][0])
 
-		# RoI head
-		# x, y, x, y, score
-		detections, img = self.obj_detect.detect(blob['img'])
-		blob['img'].update(img)
-		boxes = detections[0][:,:4]
-		scores = detections[0][:,4]
+		boxes, scores = [], []
+		for res in result[0]:
+			# x1, y1, x2, y2, score = res
+			if res[4] > self.detection_nms_thresh:
+				scores.append(res[4])
+				boxes.append(res[0:4])
 
 		if len(boxes) > 0:
-			# Filter out tracks that have too low person score
-			inds = np.greater(scores, self.detection_person_thresh).nonzero()
+			det_pos = torch.tensor(boxes).cuda()
+			det_scores = torch.tensor(scores).cuda()
 		else:
-			inds = torch.zeros(0).to(self.device)
-
-		if len(inds) > 0:
-			det_pos = torch.FloatTensor(boxes[inds]).to(self.device)
-			det_scores = torch.FloatTensor(scores[inds]).to(self.device)
-		else:
-			det_pos = torch.zeros(0).to(self.device)
-			det_scores = torch.zeros(0).to(self.device)
-
+			det_pos = torch.zeros(0).cuda()
+			det_scores = torch.zeros(0).cuda()
 		##################
 		# Predict tracks #
 		##################
 
 		num_tracks = 0
-		nms_inp_reg = torch.zeros(0).to(self.device)
+		nms_inp_reg = torch.zeros(0).cuda()
 		if len(self.tracks):
 			# align
 			if self.do_align:
@@ -298,7 +367,7 @@ class Tracker:
 				self.tracks = [t for t in self.tracks if t.has_positive_area()]
 
 			# regress
-			person_scores = self.regress_tracks()
+			person_scores = self.regress_tracks(blob['img'][0])
 
 			if len(self.tracks):
 				# create nms input
@@ -309,7 +378,6 @@ class Tracker:
 				self.tracks_to_inactive([self.tracks[i] for i in list(range(len(self.tracks))) if i not in keep])
 
 				if keep.nelement() > 0 and self.do_reid:
-					# ReID
 					new_features = self.get_appearances(blob)
 					self.add_features(new_features)
 
@@ -369,7 +437,7 @@ class Tracker:
 		]
 
 		self.im_index += 1
-		self.last_image = blob['img']['img'][0]
+		self.last_image = blob['img'][0]
 
 	def get_results(self):
 		return self.results

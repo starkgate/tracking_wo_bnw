@@ -80,11 +80,20 @@ class ResNet(models.ResNet):
     def build_crops(self, image, rois):
         res = []
         trans = Compose([ToPILImage(), Resize((256,128)), ToTensor()])
+
+        ratio = image['img']['img_metas'][0][0]['scale_factor']
+        shape = image['img']['img'][0].shape
+
         for r in rois:
-            x0 = int(r[0])
-            y0 = int(r[1])
-            x1 = int(r[2])
-            y1 = int(r[3])
+            # clamp coordinates between 0 and image size
+            # also resize bboxes
+            # r = 0 0 640 480
+            # into r = 0 0 1088 800
+            r = r.cpu() * ratio
+            y0 = max(int(r[0]), 0)
+            x0 = max(int(r[1]), 0)
+            y1 = min(int(r[2]), shape[3])
+            x1 = min(int(r[3]), shape[2])
             if x0 == x1:
                 if x0 != 0:
                     x0 -= 1
@@ -95,7 +104,7 @@ class ResNet(models.ResNet):
                     y0 -= 1
                 else:
                     y1 += 1
-            im = image[0,:,y0:y1,x0:x1]
+            im = image['img']['img'][0][0,:,x0:x1,y0:y1].to('cpu')
             im = trans(im)
             res.append(im)
         res = torch.stack(res, 0)
