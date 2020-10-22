@@ -27,7 +27,7 @@ In addition to our supplementary document, we provide an illustrative [web-video
 
 ## Requirements
 
-- Install [mmdetection](https://github.com/open-mmlab/mmdetection) 2.3.0+ with mmcv 1.1.4+
+- Install [mmdetection](https://github.com/open-mmlab/mmdetection) 2.3.0+ with mmcv 1.1.4+. The rest of the guide will assume you installed it in your home folder.
 - Train an RCNN-based object detection model per mmdetection's instructions, or download a pre-trained model
 - Download re-identification Siamese network weights:
     1. Download zip file from [here](https://vision.in.tum.de/webshare/u/meinhard/tracking_wo_bnw-output_v2.zip).
