@@ -12,17 +12,16 @@ tracktor:
   # obj_detect_config: output/frcnn/res101/mot_2017_train/180k/sacred_config.yaml
 
   # fpn
-  obj_detect_model: output/faster_rcnn_fpn_training_mot_17/model_epoch_27.model
+  # obj_detect_model: output/faster_rcnn_fpn_training_mot_17/model_epoch_27.model
   # obj_detect_config: output/fpn/res101/mot_2017_train/voc_init_iccv19/config.yaml
-  # obj_detect_weights: output/fpn/res101/mot19_cvpr_train/v1/fpn_1_3.pth
-  # obj_detect_config: output/fpn/res101/mot19_cvpr_train/v1/config.yaml
+  obj_detect_model: /home/u42/Documents/rock/mmdetection/work_dirs/custom_faster_rcnn_r50_fpn_1x_coco_filter10_1cat/epoch_5.pth
 
-  reid_weights: output/tracktor/reid/res50-mot17-batch_hard/ResNet_iter_25245.pth
-  reid_config: output/tracktor/reid/res50-mot17-batch_hard/sacred_config.yaml
+  reid_weights: tracking_wo_bnw/output/tracktor/reid/res50-mot17-batch_hard/ResNet_iter_25245.pth
+  reid_config: tracking_wo_bnw/output/tracktor/reid/res50-mot17-batch_hard/sacred_config.yaml
 
   interpolate: False
   # compile video with: `ffmpeg -f image2 -framerate 15 -i %06d.jpg -vcodec libx264 -y movie.mp4 -vf scale=320:-1`
-  write_images: False
+  write_images: True
   # dataset (look into tracker/datasets/factory.py)
   dataset: mot17_train_FRCNN17
   # [start percentage, end percentage], e.g., [0.0, 0.5] for train and [0.75, 1.0] for val split.
@@ -30,7 +29,7 @@ tracktor:
 
   tracker:
     # FRCNN score threshold for detections
-    detection_person_thresh: 0.5
+    detection_person_thresh: 0.3
     # FRCNN score threshold for keeping the track alive
     regression_person_thresh: 0.5
     # NMS threshold for detection
@@ -46,7 +45,7 @@ tracktor:
       center_only: True
     # DPM or DPM_RAW or 0, raw includes the unfiltered (no nms) versions of the provided detections,
     # 0 tells the tracker to use private detections (Faster R-CNN)
-    public_detections: True
+    public_detections: False
     # How much last appearance features are to keep
     max_features_num: 10
     # Do camera motion compensation

@@ -1,8 +1,6 @@
 import numpy as np
 import torch
-from torch.autograd import Variable
 from scipy.optimize import linear_sum_assignment
-
 from torchvision.ops.boxes import clip_boxes_to_image, nms
 
 from .tracker import Tracker

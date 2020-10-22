@@ -3,7 +3,6 @@ import os.path as osp
 import os
 import numpy as np
 import yaml
-import cv2
 
 import torch
 from torch.utils.data import DataLoader

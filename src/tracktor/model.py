@@ -1,7 +1,4 @@
-import torch
-import torch.nn.functional as F
 from mmdet.apis import init_detector, inference_detector
-from torchvision.models.detection.transform import resize_boxes
 
 
 class Model():

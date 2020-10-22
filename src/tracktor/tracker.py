@@ -1,15 +1,13 @@
 from collections import deque
 
+import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
-from mmcv.parallel import collate
 from scipy.optimize import linear_sum_assignment
-import cv2
+from torchvision.ops.boxes import nms
 
 from .utils import bbox_overlaps, warp_pos, get_center, get_height, get_width, make_pos
-
-from torchvision.ops.boxes import clip_boxes_to_image, nms
 
 
 class Tracker:
