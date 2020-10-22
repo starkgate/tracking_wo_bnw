@@ -28,7 +28,10 @@ In addition to our supplementary document, we provide an illustrative [web-video
 ## Requirements
 
 - Install [mmdetection](https://github.com/open-mmlab/mmdetection) 2.3.0+ with mmcv 1.1.4+
-- Train an RCNN-based object detection model per mmdetection's instructions
+- Train an RCNN-based object detection model per mmdetection's instructions, or download a pre-trained model
+- Download re-identification Siamese network weights:
+    1. Download zip file from [here](https://vision.in.tum.de/webshare/u/meinhard/tracking_wo_bnw-output_v2.zip).
+    2. Extract in `output` directory.
 
 ## Install
 
@@ -98,23 +101,6 @@ Tracktor can be configured by changing the corresponding `experiments/cfgs/track
 	--config ~/mmdetection/work_dirs/your_model/your_model.py \
 	--checkpoint ~/mmdetection/work_dirs/your_model/latest.pth
 ```
-
-## MOTChallenge data and ReID weights
-
-1. MOTChallenge data:
-    1. Download [MOT17Det](https://motchallenge.net/data/MOT17Det.zip), [MOT16Labels](https://motchallenge.net/data/MOT16Labels.zip), [2DMOT2015](https://motchallenge.net/data/2DMOT2015.zip), [MOT16-det-dpm-raw](https://motchallenge.net/data/MOT16-det-dpm-raw.zip) and [MOT17Labels](https://motchallenge.net/data/MOT17Labels.zip) and place them in the `data` folder. As the images are the same for MOT17Det, MOT17 and MOT16 we only need one set of images for all three benchmarks.
-    2. Unzip all the data by executing:
-    ```
-    unzip -d MOT17Det MOT17Det.zip
-    unzip -d MOT16Labels MOT16Labels.zip
-    unzip -d 2DMOT2015 2DMOT2015.zip
-    unzip -d MOT16-det-dpm-raw MOT16-det-dpm-raw.zip
-    unzip -d MOT17Labels MOT17Labels.zip
-    ```
-
-2. Download object detector and re-identification Siamese network weights and MOTChallenge result files:
-    1. Download zip file from [here](https://vision.in.tum.de/webshare/u/meinhard/tracking_wo_bnw-output_v2.zip).
-    2. Extract in `output` directory.
 
 ## Training the reidentifaction model
 
