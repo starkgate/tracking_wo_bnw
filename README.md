@@ -4,6 +4,8 @@
 
 I modified Tracktor to support arbitrary mmdetection models instead of only the default torchvision Faster-RCNN. I also made changes to fix issues encountered when using my custom dataset.
 
+My goal is to be able use Tracktor with an arbitrary pretrained object detection model on an arbitrary dataset (not just MOT).
+
 - Removed torchvision Faster-RCNN implementation
 - Replaced with mmdetection framework wrapper. Should support any mmdetection object detection model and checkpoints (tested with Faster-, Mask- and Cascade-RCNN)
 - Added argumentparser
@@ -23,72 +25,81 @@ In addition to our supplementary document, we provide an illustrative [web-video
 
 ![Visualization of Tracktor](data/method_vis_standalone.png)
 
-## Installation
+## Requirements
 
-1. Clone and enter this repository:
-  ```
-  git clone https://github.com/phil-bergmann/tracking_wo_bnw
-  cd tracking_wo_bnw
-  ```
-
-2. Install packages for Python 3.7 in [virtualenv](https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/26/python-virtual-env/):
-    1. `pip3 install -r requirements.txt`
-    2. Install Tracktor: `pip3 install -e .`
-
-3. MOTChallenge data:
-    1. Download [MOT17Det](https://motchallenge.net/data/MOT17Det.zip), [MOT16Labels](https://motchallenge.net/data/MOT16Labels.zip), [2DMOT2015](https://motchallenge.net/data/2DMOT2015.zip), [MOT16-det-dpm-raw](https://motchallenge.net/data/MOT16-det-dpm-raw.zip) and [MOT17Labels](https://motchallenge.net/data/MOT17Labels.zip) and place them in the `data` folder. As the images are the same for MOT17Det, MOT17 and MOT16 we only need one set of images for all three benchmarks.
-    2. Unzip all the data by executing:
-    ```
-    unzip -d MOT17Det MOT17Det.zip
-    unzip -d MOT16Labels MOT16Labels.zip
-    unzip -d 2DMOT2015 2DMOT2015.zip
-    unzip -d MOT16-det-dpm-raw MOT16-det-dpm-raw.zip
-    unzip -d MOT17Labels MOT17Labels.zip
-    ```
-
-4. Download object detector and re-identifiaction Siamese network weights and MOTChallenge result files:
+- Install [mmdetection](https://github.com/open-mmlab/mmdetection) 2.3.0+ with mmcv 1.1.4+. The rest of the guide will assume you installed it in your home folder.
+- Train an RCNN-based object detection model per mmdetection's instructions, or download a pre-trained model
+- Download re-identification Siamese network weights:
     1. Download zip file from [here](https://vision.in.tum.de/webshare/u/meinhard/tracking_wo_bnw-output_v2.zip).
     2. Extract in `output` directory.
 
-## Evaluate Tracktor
-In order to configure, organize, log and reproduce our computational experiments we structured our code with the [Sacred](http://sacred.readthedocs.io/en/latest/index.html) framework. For a detailed explanation of the Sacred interface please read its documentation.
+## Install
 
-1. Tracktor can be configured by changing the corresponding `experiments/cfgs/tracktor.yaml` config file. The default configuration runs Tracktor++ with the FPN object detector as described in the paper.
-
-2. The default configuration is `Tracktor++`. Run `Tracktor++` by executing:
-
-  ```
-  python experiments/scripts/test_tracktor.py
-  ```
-
-3. The results are logged in the corresponding `output` directory.
-
-For reproducability, we provide the new result metrics of this updated code base on the `MOT17` challenge. It should be noted, that these surpass the original Tracktor results. This is due to the newly trained object detector. This version of Tracktor does not differ conceptually from the original ICCV 2019 version (see branch `iccv_19`). The results on the offical MOTChallenge [webpage](https://motchallenge.net/results/MOT17/) are denoted as the `Tracktor++v2` tracker. The train and test results are:
-
-```
-********************* MOT17 TRAIN Results *********************
-IDF1  IDP  IDR| Rcll  Prcn   FAR|   GT  MT   PT   ML|    FP    FN   IDs    FM|  MOTA  MOTP MOTAL
-65.2 83.8 53.3| 63.1  99.2  0.11| 1638 550  714  374|  1732124291   903  1258|  62.3  89.6  62.6
-
-********************* MOT17 TEST Results *********************
-IDF1  IDP  IDR| Rcll  Prcn   FAR|   GT  MT   PT   ML|    FP    FN   IDs    FM|  MOTA  MOTP MOTAL
-55.1 73.6 44.1| 58.3  97.4  0.50| 2355 498 1026  831|  8866235449  1987  3763|  56.3  78.8  56.7
+```bash
+cd ~/mmdetection
+git clone https://github.com/starkgate/tracking_wo_bnw
+cd tracking_wo_bnw
+pip install -r requirements.txt
+pip install -e .
 ```
 
-## Train and test object detector (Faster-RCNN with FPN)
+## Dataset
 
-For the object detector we followed the new native `torchvision` implementations of Faster-RCNN with FPN which are pretrained on COCO. The provided object detection model was trained and tested with [this](https://colab.research.google.com/drive/1_arNo-81SnqfbdtAhb3TBSU5H0JXQ0_1) Google Colab notebook. The `MOT17Det` train and test results are:
+I was too lazy to make the names dynamic. It works, but you'll have to use hardcoded paths. I welcome pull requests!
+
+Your dataset needs to have the following folder structure:
+
+```bash
+tracking_wo_bnw
+├── data
+│   └── MOT17Det
+│       ├── test
+│       │   └── rosbag
+│       └── train
+│           └── rosbag
+│               └── img
+│           ├── moc.txt
+│           └── seqinfo.ini
+```
+
+`seqinfo.ini` contains metadata on the dataset (remove the comments in your file):
+
+```ini
+[Sequence]
+name=MOT17-02-FRCNN # name of the dataset
+imDir=img # folder where the image frames are located
+frameRate=5 # frame rate of your video
+seqLength=82 # how many frames
+imWidth=640 # width of the images (needs to be constant)
+imHeight=480 # height
+imExt=.png # extension of the images
+labels=~/mmdetection/tracking_wo_bnw/data/MOT17Det/train/rosbag/moc.txt # location of the groundtruth for evaluation
+```
+
+`moc.txt` contains the dataset's groundtruth detections, for evaluation:
 
 ```
-********************* MOT17Det TRAIN Results ***********
-Average Precision: 0.9090
-Rcll  Prcn|  FAR     GT     TP     FP     FN| MODA  MODP
-97.9  93.8| 0.81  66393  64989   4330   1404| 91.4  87.4
+# 1 line per object_id per frame
+<frame> <object_id> <x> <y> <w> <h> 1 -1 -1 -1
+# example
+1 3 423.0 128.0 58.0 59.0 1 -1 -1 -1
+1 4 486.0 175.0 49.0 31.0 1 -1 -1 -1
+1 7 272.0 52.0 18.0 14.0 1 -1 -1 -1
+2 19 144.0 44.0 26.0 34.0 1 -1 -1 -1
+3 20 110.0 52.0 22.0 17.0 1 -1 -1 -1
+3 30 333.0 39.0 12.0 11.0 1 -1 -1 -1
+```
 
-********************* MOT17Det TEST Results ***********
-Average Precision: 0.8150
-Rcll  Prcn|  FAR     GT     TP     FP     FN| MODA  MODP
-86.5  88.3| 2.23 114564  99132  13184  15432| 75.0  78.3
+`1 -1 -1 -1` is only used for groundtruth
+
+## Test
+
+Tracktor can be configured by changing the corresponding `experiments/cfgs/tracktor.yaml` config file. Settings include thresholds for detection and reidentification.
+
+```
+~/mmdetection/tracking_wo_bnw/experiments/scripts/test_tracktor.py \
+	--config ~/mmdetection/work_dirs/your_model/your_model.py \
+	--checkpoint ~/mmdetection/work_dirs/your_model/latest.pth
 ```
 
 ## Training the reidentifaction model
