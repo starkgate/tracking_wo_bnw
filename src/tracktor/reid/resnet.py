@@ -87,8 +87,7 @@ class ResNet(models.ResNet):
         for r in rois:
             # clamp coordinates between 0 and image size
             # also resize bboxes
-            # r = 0 0 640 480
-            # into r = 0 0 1088 800
+            # For example, r = 0 0 640 480 into r*ratio = 0 0 1088 800
             r = r.cpu() * ratio
             y0 = max(int(r[0]), 0)
             x0 = max(int(r[1]), 0)
