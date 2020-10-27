@@ -34,6 +34,7 @@ class Model():
         data = dict(img_info=dict(filename=img), img_prefix=None)
         # build the data pipeline
         test_pipeline = Compose(cfg.data.test.pipeline)
+        # we store the metadata about mmdetection's pipeline transformations in data. It will be used later
         data = test_pipeline(data)
         data = collate([data], samples_per_gpu=1)
         if next(model.parameters()).is_cuda:

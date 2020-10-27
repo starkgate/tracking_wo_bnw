@@ -3,13 +3,13 @@ import os
 import motmetrics as mm
 import numpy as np
 from torch.utils.data import DataLoader
+from tracktor.datasets.custom_sequence import CustomSequence
 
 mm.lap.default_solver = 'lap'
 
 from tqdm import tqdm
 from sacred import Experiment
 from tracktor.config import get_output_dir
-from tracktor.datasets.factory import Datasets
 from tracktor.oracle_tracker import OracleTracker
 from tracktor.tracker import Tracker
 from tracktor.reid.resnet import resnet50
@@ -57,7 +57,7 @@ torch.cuda.manual_seed(tracktor['seed'])
 np.random.seed(tracktor['seed'])
 torch.backends.cudnn.deterministic = True
 
-output_dir = osp.join('tracking_wo_bnw', get_output_dir(tracktor['module_name']), tracktor['name'])
+output_dir = tracktor['output_dir']
 sacred_config = osp.join(output_dir, 'sacred_config.yaml')
 
 if not osp.exists(output_dir):
@@ -91,7 +91,7 @@ time_total = 0
 num_frames = 0
 mot_accums = []
 
-dataset = Datasets(tracktor['dataset'])
+dataset = CustomSequence(cfg=tracktor)
 for seq in dataset:
     tracker.reset()
 

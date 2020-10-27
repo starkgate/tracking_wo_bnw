@@ -1,29 +1,18 @@
 tracktor:
   name: Tracktor++
-  # Subfolder name in output/tracker/
-  module_name: MOT17
-  desription:
   seed: 12345
   # frcnn or fpn
   network: fpn
+  data_path: /home/u42/Documents/rock/mmdetection/tracking_wo_bnw/data/rosbag
+  output_dir: /home/u42/Documents/rock/mmdetection/tracking_wo_bnw/data/output
 
-  # frcnn
-  # obj_detect_weights: output/frcnn/res101/mot_2017_train/180k/res101_faster_rcnn_iter_180000.pth
-  # obj_detect_config: output/frcnn/res101/mot_2017_train/180k/sacred_config.yaml
-
-  # fpn
-  # obj_detect_model: output/faster_rcnn_fpn_training_mot_17/model_epoch_27.model
-  # obj_detect_config: output/fpn/res101/mot_2017_train/voc_init_iccv19/config.yaml
-  obj_detect_model: /home/u42/Documents/rock/mmdetection/work_dirs/custom_faster_rcnn_r50_fpn_1x_coco_filter10_1cat/epoch_5.pth
-
+  # reid
   reid_weights: tracking_wo_bnw/output/tracktor/reid/res50-mot17-batch_hard/ResNet_iter_25245.pth
   reid_config: tracking_wo_bnw/output/tracktor/reid/res50-mot17-batch_hard/sacred_config.yaml
 
   interpolate: False
   # compile video with: `ffmpeg -f image2 -framerate 15 -i %06d.jpg -vcodec libx264 -y movie.mp4 -vf scale=320:-1`
   write_images: True
-  # dataset (look into tracker/datasets/factory.py)
-  dataset: mot17_train_FRCNN17
   # [start percentage, end percentage], e.g., [0.0, 0.5] for train and [0.75, 1.0] for val split.
   frame_split: [0.0, 1.0]
 
