@@ -31,7 +31,7 @@ class Model():
         cfg = model.cfg
         device = next(model.parameters()).device  # model device
         # prepare data
-        data = dict(img_info=dict(filename=img), img_prefix=None)
+        data = dict(img_info=dict(filename=img['img_path']), img_prefix=None)
         # build the data pipeline
         test_pipeline = Compose(cfg.data.test.pipeline)
         # we store the metadata about mmdetection's pipeline transformations in data. It will be used later
@@ -54,13 +54,13 @@ class Model():
 
         # forward the model
         with torch.no_grad():
-            result = model(return_loss=False, rescale=True, **data)[0]
+            result = model(return_loss=False, rescale=False, **data)[0]
 
         return result, data
 
     def detect(self, img):
         # return detections, transformed img
-        detections, trans_img = self.custom_mmdetection_inference_detector(self.model, img['im_path'][0])
+        detections, trans_img = self.custom_mmdetection_inference_detector(self.model, img)
         self.preprocessed_images = trans_img
 
         return detections, trans_img

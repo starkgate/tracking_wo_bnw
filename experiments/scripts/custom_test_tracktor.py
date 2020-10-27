@@ -92,39 +92,36 @@ num_frames = 0
 mot_accums = []
 
 dataset = CustomSequence(cfg=tracktor)
-for seq in dataset:
-    tracker.reset()
+tracker.reset()
 
-    start = time.time()
+start = time.time()
+print(f"Tracking: {dataset}")
 
-    print(f"Tracking: {seq}")
+for i, frame in enumerate(tqdm(dataset)):
+    if len(dataset) * tracktor['frame_split'][0] <= i <= len(dataset) * tracktor['frame_split'][1]:
+        with torch.no_grad():
+            tracker.step(frame)
+        num_frames += 1
+results = tracker.get_results()
 
-    data_loader = DataLoader(seq, batch_size=1, shuffle=False)
-    for i, frame in enumerate(tqdm(data_loader)):
-        if len(seq) * tracktor['frame_split'][0] <= i <= len(seq) * tracktor['frame_split'][1]:
-            with torch.no_grad():
-                tracker.step(frame)
-            num_frames += 1
-    results = tracker.get_results()
+time_total += time.time() - start
 
-    time_total += time.time() - start
+print(f"Tracks found: {len(results)}")
+print(f"Runtime for {dataset}: {time.time() - start :.2f} s.")
 
-    print(f"Tracks found: {len(results)}")
-    print(f"Runtime for {seq}: {time.time() - start :.2f} s.")
+if tracktor['interpolate']:
+    results = interpolate(results)
 
-    if tracktor['interpolate']:
-        results = interpolate(results)
+if dataset.no_gt:
+    print(f"No GT data for evaluation available.")
+else:
+    mot_accums.append(get_mot_accum(results, dataset))
 
-    if seq.no_gt:
-        print(f"No GT data for evaluation available.")
-    else:
-        mot_accums.append(get_mot_accum(results, seq))
+print(f"Writing predictions to: {output_dir}")
+seq.write_results(results, output_dir)
 
-    print(f"Writing predictions to: {output_dir}")
-    seq.write_results(results, output_dir)
-
-    if tracktor['write_images']:
-        plot_sequence(results, seq, osp.join(output_dir, tracktor['dataset'], str(seq)))
+if tracktor['write_images']:
+    plot_sequence(results, seq, osp.join(output_dir, tracktor['dataset'], str(seq)))
 
 print(f"Tracking runtime for all sequences (without evaluation or image writing): "
       f"{time_total:.2f} s for {num_frames} frames ({num_frames / time_total:.2f} Hz)")

@@ -78,18 +78,15 @@ class ResNet(models.ResNet):
             out = torch.sigmoid(out)
         return out
 
+    # this function returns crops corresponding to the ROIs of the original image
+    # they'll be used for tracking afterwards
     def build_crops(self, image, rois):
         res = []
         trans = Compose([ToPILImage(), Resize((256, 128)), ToTensor()])
-
-        ratio = image['img']['img_metas'][0][0]['scale_factor']
-        shape = image['img']['img'][0].shape
+        shape = image['img'][0].shape
 
         for r in rois:
             # clamp coordinates between 0 and image size
-            # also resize bboxes
-            # For example, r = 0 0 640 480 into r*ratio = 0 0 1088 800
-            r = r.cpu() * ratio
             y0 = max(int(r[0]), 0)
             x0 = max(int(r[1]), 0)
             y1 = min(int(r[2]), shape[3])
@@ -104,7 +101,7 @@ class ResNet(models.ResNet):
                     y0 -= 1
                 else:
                     y1 += 1
-            im = image['img']['img'][0][0, :, x0:x1, y0:y1].to('cpu')
+            im = image['img'][0][0, :, x0:x1, y0:y1].to('cpu')
             im = trans(im)
             res.append(im)
         res = torch.stack(res, 0)

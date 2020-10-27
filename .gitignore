@@ -7,6 +7,9 @@ motchallenge-devkit
 *.o
 *.out
 *.obj
+*.log
+*.png
+.idea/
 
 # C Extensions
 *.so

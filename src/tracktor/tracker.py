@@ -195,7 +195,7 @@ class Tracker:
 		"""Aligns the positions of active and inactive tracks depending on camera motion."""
 		if self.im_index > 0:
 			im1 = np.transpose(self.last_image.cpu().numpy().squeeze(), (1, 2, 0))
-			im2 = np.transpose(blob['img']['img'][0].cpu().numpy().squeeze(), (1, 2, 0))
+			im2 = np.transpose(blob['img'][0].cpu().numpy().squeeze(), (1, 2, 0))
 			im1_gray = cv2.cvtColor(im1, cv2.COLOR_RGB2GRAY)
 			im2_gray = cv2.cvtColor(im2, cv2.COLOR_RGB2GRAY)
 			warp_matrix = np.eye(2, 3, dtype=np.float32)
@@ -255,14 +255,11 @@ class Tracker:
 		###########################
 		# Look for new detections #
 		###########################
-		# run test pipeline on loaded images
-		blob['img']['filename'] = blob['img_path'][0]
-		blob['img']['ori_filename'] = blob['img_path'][0]
-
-		# RoI head
-		# x, y, x, y, score
-		detections, img = self.obj_detect.detect(blob['img'])
-		blob['img'].update(img)
+		# Run test pipeline, RPN and ROIHead on loaded images
+		# Returns x, y, x, y, score
+		detections, img = self.obj_detect.detect(blob)
+		blob.update(img)
+		# split detections into bbox coordinates and respective scores
 		boxes = detections[0][:,:4]
 		scores = detections[0][:,4]
 
@@ -283,8 +280,6 @@ class Tracker:
 		# Predict tracks #
 		##################
 
-		num_tracks = 0
-		nms_inp_reg = torch.zeros(0).to(self.device)
 		if len(self.tracks):
 			# align
 			if self.do_align:
@@ -367,7 +362,7 @@ class Tracker:
 		]
 
 		self.im_index += 1
-		self.last_image = blob['img']['img'][0]
+		self.last_image = blob['img'][0]
 
 	def get_results(self):
 		return self.results

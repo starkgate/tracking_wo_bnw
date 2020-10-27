@@ -3,7 +3,6 @@ import csv
 import os
 import os.path as osp
 
-import numpy as np
 from torch.utils.data import Dataset
 
 class CustomSequence(Dataset):
@@ -11,6 +10,7 @@ class CustomSequence(Dataset):
 
     This dataloader is designed so that it can handle only one sequence, if more have to be
     handled one should inherit from this class.
+    It is also only meant for testing, not training. Hence the lack of groundtruth data and labels.
     """
 
     def __init__(self, cfg):
@@ -20,24 +20,17 @@ class CustomSequence(Dataset):
             vis_threshold (float): Threshold of visibility of persons above which they are selected
         """
         self.folder = cfg['data_path']
+        self.no_gt = True
 
         assert os.path.exists(self.folder), 'Image set does not exist: {}'.format(self.folder)
-        self.data, self.no_gt = self._sequence()
+        self.data = self._sequence()
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
         """Return the ith image converted to blob"""
-        data = self.data[idx]
-
-        sample = {}
-        sample['img'] = data
-        sample['img_path'] = data['im_path']
-        sample['gt'] = data['gt']
-        sample['vis'] = data['vis']
-
-        return sample
+        return self.data[idx]
 
     def _sequence(self):
         config_file = osp.join(self.folder, 'seqinfo.ini')
@@ -50,53 +43,17 @@ class CustomSequence(Dataset):
         seqLength = int(config['Sequence']['seqLength'])
         imDir = config['Sequence']['imDir']
         imExt = config['Sequence']['imExt']
-        labels = config['Sequence']['labels']
 
         imDir = osp.join(self.folder, imDir)
-        gt_file = labels
-
         total = []
-
-        visibility = {}
-        boxes = {}
 
         # frames start at 0
         for i in range(1, seqLength + 1):
-            boxes[i] = {}
-            visibility[i] = {}
-
-        no_gt = False
-        if osp.exists(gt_file):
-            with open(gt_file, "r") as inf:
-                reader = csv.reader(inf, delimiter=' ')
-                for row in reader:
-                    frame = int(row[0])
-                    bbox = int(row[1])
-                    # Make pixel indexes 0-based, should already be 0-based (or not)
-                    x1 = int(float(row[2])) - 1
-                    y1 = int(float(row[3])) - 1
-                    # This -1 accounts for the width (width of 1 x1=x2)
-                    x2 = x1 + int(float(row[4])) - 1
-                    y2 = y1 + int(float(row[5])) - 1
-                    bb = np.array([x1, y1, x2, y2], dtype=np.float32)
-                    boxes[frame][bbox] = bb
-                    visibility[frame][bbox] = float(row[8])
-        else:
-            no_gt = True
-
-        for i in range(1, seqLength + 1):
             im_path = osp.join(imDir, "{:06d}{:s}".format(i, imExt))
-
-            # we need 'filename', 'ori_filename'
-            sample = {'gt': boxes[i],
-                      'filename': im_path,
-                      'ori_filename': im_path,
-                      'im_path': im_path,
-                      'vis': visibility[i]}
-
+            sample = {'img_path': im_path}
             total.append(sample)
 
-        return total, no_gt
+        return total
 
     def write_results(self, all_tracks, output_dir):
         """Write the tracks in the format for MOT16/MOT17 sumbission
