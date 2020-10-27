@@ -16,8 +16,7 @@ class CustomSequence(Dataset):
     def __init__(self, cfg):
         """
         Args:
-            seq_name (string): Sequence to take
-            vis_threshold (float): Threshold of visibility of persons above which they are selected
+            cfg: yaml config file
         """
         self.folder = cfg['data_path']
         self.no_gt = True
