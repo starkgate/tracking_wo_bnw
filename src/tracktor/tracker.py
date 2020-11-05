@@ -255,13 +255,13 @@ class Tracker:
 		###########################
 		# Look for new detections #
 		###########################
+
+		# Preprocess (augment) the image and cache its features
+		self.obj_detect.load_image(blob)
+
 		# Run test pipeline, RPN and ROIHead on loaded images
 		# Returns x, y, x, y, score
-		detections, img = self.obj_detect.detect(blob)
-		blob.update(img)
-		# split detections into bbox coordinates and respective scores
-		boxes = detections[0][:,:4]
-		scores = detections[0][:,4]
+		boxes, scores = self.obj_detect.detect()
 
 		if len(boxes) > 0:
 			# Filter out tracks that have too low person score
@@ -283,7 +283,7 @@ class Tracker:
 		if len(self.tracks):
 			# align
 			if self.do_align:
-				self.align(blob)
+				self.align(self.obj_detect.preprocessed_images)
 
 			# apply motion model
 			if self.motion_model_cfg['enabled']:
@@ -303,7 +303,7 @@ class Tracker:
 
 				if keep.nelement() > 0 and self.do_reid:
 					# ReID
-					new_features = self.get_appearances(blob)
+					new_features = self.get_appearances(self.obj_detect.preprocessed_images)
 					self.add_features(new_features)
 
 		#####################
@@ -339,7 +339,7 @@ class Tracker:
 			new_det_scores = det_scores
 
 			# try to reidentify tracks
-			new_det_pos, new_det_scores, new_det_features = self.reid(blob, new_det_pos, new_det_scores)
+			new_det_pos, new_det_scores, new_det_features = self.reid(self.obj_detect.preprocessed_images, new_det_pos, new_det_scores)
 
 			# add new
 			if new_det_pos.nelement() > 0:
@@ -362,7 +362,7 @@ class Tracker:
 		]
 
 		self.im_index += 1
-		self.last_image = blob['img'][0]
+		self.last_image = self.obj_detect.preprocessed_images['img'][0]
 
 	def get_results(self):
 		return self.results

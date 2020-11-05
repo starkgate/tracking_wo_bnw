@@ -1,7 +1,3 @@
-import warnings
-
-import torch
-from mmcv.ops import RoIAlign, RoIPool
 from mmcv.parallel import collate, scatter
 from mmdet.apis import init_detector
 from mmdet.datasets.pipelines import Compose
@@ -14,22 +10,34 @@ class Model():
         self.preprocessed_images = None
         self.device = device
 
-    def custom_mmdetection_inference_detector(self, model, img):
-        """Modified version of inference_detector in mmdet.apis.inference: mmdetection doesn't return the preprocessed image through the test pipeline
-        This function returns the prediction AND the preprocessed image data
-        Original description: Inference image(s) with the detector.
+    # modified code from mmdetection/two_stage.py:simple_test
+    def detect(self):
+        proposal_list = self.model.rpn_head.simple_test_rpn(self.features, self.preprocessed_images['img_metas'][0])
+        detections = self.model.roi_head.simple_test(self.features, proposal_list, self.preprocessed_images['img_metas'][0], rescale=False)[0][0]
 
-        Args:
-            model (nn.Module): The loaded detector.
-            imgs (str/ndarray or list[str/ndarray]): Either image files or loaded
-                images.
+        # split detections into bbox coordinates and respective scores
+        boxes = detections[:, :4]
+        scores = detections[:, 4]
+        return boxes, scores
 
-        Returns:
-            If imgs is a str, a generator will be returned, otherwise return the
-            detection results directly.
-        """
-        cfg = model.cfg
-        device = next(model.parameters()).device  # model device
+    # test the bboxes of the previous frame on the features of the current frame
+    def predict_boxes(self, boxes):
+        proposal_list = [boxes]
+        detections = self.model.roi_head.simple_test(self.features, proposal_list, self.preprocessed_images['img_metas'][0], rescale=False)[0][0]
+
+        assert (proposal_list[0].shape[0] == detections.shape[0]), \
+            "If there aren't as many detections as there are input boxes, it may mean that mmdetection filtered out " \
+            "some of the results because their score was too low. You can fix that by setting score_thr=0 in your " \
+            "mmdetection config file"
+
+        pred_boxes = detections[:, :4]
+        pred_scores = detections[:, 4]
+        return pred_boxes, pred_scores
+
+    # Preprocess (augment) the image and cache its features
+    def load_image(self, img):
+        cfg = self.model.cfg
+        device = next(self.model.parameters()).device  # model device
         # prepare data
         data = dict(img_info=dict(filename=img['img_path']), img_prefix=None)
         # build the data pipeline
@@ -37,42 +45,6 @@ class Model():
         # we store the metadata about mmdetection's pipeline transformations in data. It will be used later
         data = test_pipeline(data)
         data = collate([data], samples_per_gpu=1)
-        if next(model.parameters()).is_cuda:
-            # scatter to specified GPU
-            data = scatter(data, [device])[0]
-        else:
-            # Use torchvision ops for CPU mode instead
-            for m in model.modules():
-                if isinstance(m, (RoIPool, RoIAlign)):
-                    if not m.aligned:
-                        # aligned=False is not implemented on CPU
-                        # set use_torchvision on-the-fly
-                        m.use_torchvision = True
-            warnings.warn('We set use_torchvision=True in CPU mode.')
-            # just get the actual data from DataContainer
-            data['img_metas'] = data['img_metas'][0].data
-
-        # forward the model
-        with torch.no_grad():
-            result = model(return_loss=False, rescale=False, **data)[0]
-
-        return result, data
-
-    def detect(self, img):
-        # return detections, transformed img
-        detections, trans_img = self.custom_mmdetection_inference_detector(self.model, img)
-        self.preprocessed_images = trans_img
-
-        return detections, trans_img
-
-    # TODO use boxes used as input argument instead of detecting new ones?
-    # What is the point since the features will need to be recalculated?
-    def predict_boxes(self, boxes):
-        # calling roi_head uses forward_train by default, which causes a CudaIllegalMemoryAccess error
-        # we don't want to train anyways, so we'll use aug_test: augment then test
-        # ndarray: x1 y1 x2 y2 score
-        predictions = self.model.aug_test(self.preprocessed_images['img'], self.preprocessed_images['img_metas'])
-        pred_boxes = predictions[0][0][:, :4]
-        pred_scores = predictions[0][0][:, 4]
-
-        return pred_boxes, pred_scores
+        # scatter to specified GPU
+        self.preprocessed_images = scatter(data, [device])[0]
+        self.features = self.model.extract_feats(self.preprocessed_images['img'])[0]

@@ -2,14 +2,12 @@ import os
 
 import motmetrics as mm
 import numpy as np
-from torch.utils.data import DataLoader
 from tracktor.datasets.custom_sequence import CustomSequence
 
 mm.lap.default_solver = 'lap'
 
 from tqdm import tqdm
 from sacred import Experiment
-from tracktor.config import get_output_dir
 from tracktor.oracle_tracker import OracleTracker
 from tracktor.tracker import Tracker
 from tracktor.reid.resnet import resnet50
@@ -118,10 +116,10 @@ else:
     mot_accums.append(get_mot_accum(results, dataset))
 
 print(f"Writing predictions to: {output_dir}")
-seq.write_results(results, output_dir)
+dataset.write_results(results, output_dir)
 
 if tracktor['write_images']:
-    plot_sequence(results, seq, osp.join(output_dir, tracktor['dataset'], str(seq)))
+    plot_sequence(results, dataset, osp.join(output_dir))
 
 print(f"Tracking runtime for all sequences (without evaluation or image writing): "
       f"{time_total:.2f} s for {num_frames} frames ({num_frames / time_total:.2f} Hz)")
