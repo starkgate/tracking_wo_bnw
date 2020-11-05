@@ -4,7 +4,7 @@
 
 I modified Tracktor to support arbitrary mmdetection models instead of only the default torchvision Faster-RCNN. I also made changes to fix issues encountered when using my custom dataset.
 
-My goal is to be able use Tracktor with an arbitrary pretrained object detection model on an arbitrary dataset (not just MOT).
+The fork is meant to make testing arbitrary datasets (not just MOT) on pretrained mmdetection models easier.
 
 - Removed torchvision Faster-RCNN implementation
 - Replaced with mmdetection framework wrapper. Should support any mmdetection object detection model and checkpoints (tested with Faster-, Mask- and Cascade-RCNN)
@@ -45,21 +45,12 @@ pip install -e .
 
 ## Dataset
 
-I was too lazy to make the names dynamic. It works, but you'll have to use hardcoded paths. I welcome pull requests!
-
-Your dataset needs to have the following folder structure:
+You can configure your dataset in `tracking_wo_bnw/experiments/cfgs/tracktor.yaml`: change `data_path: ...` to wherever your dataset is located. Tracktor will look for the following files and folders in `data_path`:
 
 ```bash
-tracking_wo_bnw
-├── data
-│   └── MOT17Det
-│       ├── test
-│       │   └── rosbag
-│       └── train
-│           └── rosbag
-│               └── img
-│           ├── moc.txt
-│           └── seqinfo.ini
+data_path_location
+├── img
+└── seqinfo.ini
 ```
 
 `seqinfo.ini` contains metadata on the dataset (remove the comments in your file):
@@ -67,34 +58,17 @@ tracking_wo_bnw
 ```ini
 [Sequence]
 name=MOT17-02-FRCNN # name of the dataset
-imDir=img # folder where the image frames are located
+imDir=img # name of the folder where the image frames are located
 frameRate=5 # frame rate of your video
 seqLength=82 # how many frames
 imWidth=640 # width of the images (needs to be constant)
 imHeight=480 # height
 imExt=.png # extension of the images
-labels=~/mmdetection/tracking_wo_bnw/data/MOT17Det/train/rosbag/moc.txt # location of the groundtruth for evaluation
 ```
-
-`moc.txt` contains the dataset's groundtruth detections, for evaluation:
-
-```
-# 1 line per object_id per frame
-<frame> <object_id> <x> <y> <w> <h> 1 -1 -1 -1
-# example
-1 3 423.0 128.0 58.0 59.0 1 -1 -1 -1
-1 4 486.0 175.0 49.0 31.0 1 -1 -1 -1
-1 7 272.0 52.0 18.0 14.0 1 -1 -1 -1
-2 19 144.0 44.0 26.0 34.0 1 -1 -1 -1
-3 20 110.0 52.0 22.0 17.0 1 -1 -1 -1
-3 30 333.0 39.0 12.0 11.0 1 -1 -1 -1
-```
-
-`1 -1 -1 -1` is only used for groundtruth
 
 ## Test
 
-Tracktor can be configured by changing the corresponding `experiments/cfgs/tracktor.yaml` config file. Settings include thresholds for detection and reidentification.
+Tracktor can be configured by changing the corresponding `experiments/cfgs/tracktor.yaml` config file. Settings include thresholds for detection and reidentification. Tracktor also takes the following arguments:
 
 ```
 ~/mmdetection/tracking_wo_bnw/experiments/scripts/test_tracktor.py \
